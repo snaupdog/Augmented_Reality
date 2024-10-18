@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@webxr-input-profiles/motion-controllers": "^1.0.0",
+    "three": "^0.169.0"
+  }
+}
