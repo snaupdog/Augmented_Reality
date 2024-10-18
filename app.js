@@ -17,7 +17,7 @@ document.body.appendChild(ARButton.createButton(renderer));
 
 const blockSize = 0.02; // Block size for tetrominoes
 let stackHeight = 0; // Track total stack height
-let speed = 0.005; // Falling speed
+let speed = 0.01; // Falling speed
 let currentTetromino; // Store the current falling tetromino
 
 // Track all placed tetrominoes in a simple array
@@ -81,11 +81,12 @@ function createTetromino() {
 }
 
 // Rotate tetromino on click
-renderer.domElement.addEventListener("click", () => {
+function onSelect() {
   if (currentTetromino) {
+    console.log("hello");
     currentTetromino.rotation.z += Math.PI / 2; // Rotate 90 degrees
   }
-});
+}
 
 // Detect collision with ground or another tetromino
 function detectCollision(tetromino) {
@@ -144,6 +145,11 @@ renderer.setAnimationLoop(() => {
 
   renderer.render(scene, camera);
 });
+
+// Handle AR input sources (e.g., taps)
+const controller = renderer.xr.getController(0);
+controller.addEventListener("selectstart", onSelect);
+scene.add(controller);
 
 // Resize handling
 window.addEventListener("resize", () => {
