@@ -46,20 +46,17 @@ const tetrominoes = [
   ], // J-shape
 ];
 
-// Function to create a single block and return its size
+let currentTetromino; // Store the current falling tetromino
+let speed = 0.005; // Falling speed
+const blockSize = 0.008;
+
+// Create a block with a dynamic size
 function createBlock(material) {
-  const blockSize = 0.01; // 5cm block size
   const block = new THREE.Mesh(
     new THREE.BoxGeometry(blockSize, blockSize, blockSize),
     material,
   );
-
-  // Compute the bounding box to get the actual size
-  const boundingBox = new THREE.Box3().setFromObject(block);
-  const size = new THREE.Vector3();
-  boundingBox.getSize(size);
-
-  return { block, size };
+  return block;
 }
 
 // Create a random Tetromino with dynamically calculated spacing
@@ -70,11 +67,10 @@ function createTetromino() {
   });
 
   const group = new THREE.Group();
-  const { size } = createBlock(material); // Get the size dynamically
 
   shape.forEach(([x, y]) => {
-    const { block } = createBlock(material); // Create block instances
-    block.position.set(x * size.x, y * size.y, 0); // Use the size for spacing
+    const block = createBlock(material);
+    block.position.set(x * blockSize, y * blockSize, 0);
     group.add(block);
   });
 
@@ -84,16 +80,25 @@ function createTetromino() {
   return group;
 }
 
-// Create and drop the tetromino
-let currentTetromino = createTetromino();
-let speed = 0.005; // Adjust speed for smaller blocks
+// Create and drop the first tetromino
+currentTetromino = createTetromino();
 
-// Animation loop
+// Handle tap-to-rotate interaction
+function rotateTetromino() {
+  if (currentTetromino) {
+    currentTetromino.rotation.z += Math.PI / 2; // Rotate 90 degrees on Y-axis
+  }
+}
+
+// Add event listener for tap events in AR
+renderer.domElement.addEventListener("click", rotateTetromino);
+
+// Animation loop to simulate falling
 renderer.setAnimationLoop(() => {
   if (currentTetromino.position.y > 0) {
-    currentTetromino.position.y -= speed; // Drop the block
+    currentTetromino.position.y -= speed; // Simulate gravity
   } else {
-    currentTetromino = createTetromino(); // Create a new block when it lands
+    currentTetromino = createTetromino(); // Create a new tetromino when it lands
   }
 
   renderer.render(scene, camera);
