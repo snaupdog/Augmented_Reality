@@ -46,7 +46,23 @@ const tetrominoes = [
   ], // J-shape
 ];
 
-// Create a random Tetromino block
+// Function to create a single block and return its size
+function createBlock(material) {
+  const blockSize = 0.01; // 5cm block size
+  const block = new THREE.Mesh(
+    new THREE.BoxGeometry(blockSize, blockSize, blockSize),
+    material,
+  );
+
+  // Compute the bounding box to get the actual size
+  const boundingBox = new THREE.Box3().setFromObject(block);
+  const size = new THREE.Vector3();
+  boundingBox.getSize(size);
+
+  return { block, size };
+}
+
+// Create a random Tetromino with dynamically calculated spacing
 function createTetromino() {
   const shape = tetrominoes[Math.floor(Math.random() * tetrominoes.length)];
   const material = new THREE.MeshBasicMaterial({
@@ -54,12 +70,11 @@ function createTetromino() {
   });
 
   const group = new THREE.Group();
+  const { size } = createBlock(material); // Get the size dynamically
+
   shape.forEach(([x, y]) => {
-    const block = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, 0.1, 0.1),
-      material,
-    );
-    block.position.set(x * 0.1, y * 0.1, 0);
+    const { block } = createBlock(material); // Create block instances
+    block.position.set(x * size.x, y * size.y, 0); // Use the size for spacing
     group.add(block);
   });
 
@@ -71,7 +86,7 @@ function createTetromino() {
 
 // Create and drop the tetromino
 let currentTetromino = createTetromino();
-let speed = 0.01; // Falling speed
+let speed = 0.005; // Adjust speed for smaller blocks
 
 // Animation loop
 renderer.setAnimationLoop(() => {
