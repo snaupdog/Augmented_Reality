@@ -1,0 +1,1 @@
+ http-server . -S -C server.cert -K server.key -p 8080 --host 0.0.0.0

@@ -9,21 +9,30 @@ const camera = new THREE.PerspectiveCamera(
   0.01,
   20,
 );
+
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
+renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(ARButton.createButton(renderer));
 
-const blockSize = 0.02; // Block size for tetrominoes
-let stackHeight = 0; // Track total stack height
-let speed = 0.01; // Falling speed
-let currentTetromino; // Store the current falling tetromino
+// Lights for better visibility and shadow effects
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(5, 5, 5);
+light.castShadow = true;
+scene.add(light);
 
-// Track all placed tetrominoes in a simple array
+const ambientLight = new THREE.AmbientLight(0x404040); // Soft ambient light
+scene.add(ambientLight);
+
+const blockSize = 0.02; // Tetromino block size
+let stackHeight = 0;
+let speed = 0.01;
+let currentTetromino;
 const placedTetrominoes = [];
 
-// Tetromino shapes (as 2D arrays of coordinates)
+// Tetromino shapes
 const tetrominoes = [
   [
     [0, 0],
@@ -51,19 +60,19 @@ const tetrominoes = [
   ], // J-shape
 ];
 
-// Create a single block with material
 function createBlock(material) {
   const block = new THREE.Mesh(
     new THREE.BoxGeometry(blockSize, blockSize, blockSize),
     material,
   );
+  block.castShadow = true;
+  block.receiveShadow = true;
   return block;
 }
 
-// Create a random tetromino group
 function createTetromino() {
   const shape = tetrominoes[Math.floor(Math.random() * tetrominoes.length)];
-  const material = new THREE.MeshBasicMaterial({
+  const material = new THREE.MeshStandardMaterial({
     color: Math.random() * 0xffffff,
   });
 
@@ -74,84 +83,126 @@ function createTetromino() {
     group.add(block);
   });
 
-  // Start above the stack
   group.position.set(0, stackHeight + 1.5, -0.5);
   scene.add(group);
   return group;
 }
 
-// Rotate tetromino on click
+function createGridHelpers() {
+  const gridBlocks = 10; // Number of blocks in one row/column (adjust as needed)
+  const gridSize = gridBlocks * blockSize; //
+
+  const horizontalGrid = new THREE.GridHelper(
+    gridSize,
+    gridBlocks,
+    0x00ff00,
+    0x808080,
+  );
+  horizontalGrid.position.z = -0.5;
+  horizontalGrid.position.x = 0.01;
+  scene.add(horizontalGrid);
+
+  const verticalGrid = new THREE.GridHelper(
+    gridSize,
+    gridBlocks,
+    0x00ff00,
+    0x808080,
+  );
+  verticalGrid.rotation.x = Math.PI / 2;
+
+  verticalGrid.position.z = -0.5;
+  verticalGrid.position.x = 0.009;
+  verticalGrid.position.y = 0.1;
+  scene.add(verticalGrid);
+
+  const sideGrid = new THREE.GridHelper(
+    gridSize,
+    gridBlocks,
+    0x00ff00,
+    0x808080,
+  );
+  sideGrid.rotation.z = Math.PI / 2;
+  sideGrid.position.x = 0.1;
+  sideGrid.position.z = -0.5;
+
+  sideGrid.position.y = 0.1;
+  scene.add(sideGrid);
+}
+
+createGridHelpers();
+
 function onSelect() {
   if (currentTetromino) {
-    console.log("hello");
-    currentTetromino.rotation.z += Math.PI / 2; // Rotate 90 degrees
+    currentTetromino.rotation.z += Math.PI / 2;
+
+    currentTetromino.children.forEach((block) => {
+      block.material.color.setHex(0xff0000); // Change to red briefly
+    });
+
+    setTimeout(() => {
+      currentTetromino.children.forEach((block) => {
+        block.material.color.set(Math.random() * 0xffffff); // Reset color
+      });
+    }, 200); // Reset after 200ms
   }
 }
 
-// Detect collision with ground or another tetromino
 function detectCollision(tetromino) {
-  const blocks = tetromino.children; // Get the blocks of the tetromino
+  const blocks = tetromino.children;
   for (const block of blocks) {
     const worldPosition = block.getWorldPosition(new THREE.Vector3());
     const blockY = worldPosition.y;
 
-    // Check if it has reached the stack height or ground
-    if (blockY <= stackHeight + blockSize / 2) {
-      return true; // Collision detected
-    }
+    if (blockY <= stackHeight + blockSize / 2) return true;
 
-    // Check if block overlaps with any placed tetromino
     for (const placed of placedTetrominoes) {
       const placedBlocks = placed.children;
-
       for (const placedBlock of placedBlocks) {
         const placedWorldPosition = placedBlock.getWorldPosition(
           new THREE.Vector3(),
         );
-        const placedBlockY = placedWorldPosition.y;
-
-        // If both blocks are in the same position, we have a collision
         if (
           Math.abs(worldPosition.x - placedWorldPosition.x) < blockSize &&
-          Math.abs(blockY - placedBlockY) < blockSize
+          Math.abs(worldPosition.y - placedWorldPosition.y) < blockSize &&
+          Math.abs(worldPosition.z - placedWorldPosition.z) < blockSize
         ) {
-          return true; // Collision detected with an existing block
+          return true;
         }
       }
     }
   }
-
-  return false; // No collision detected
+  return false;
 }
 
-// Main animation loop
+function gameOver() {
+  alert("Game Over! Refresh to restart.");
+  renderer.setAnimationLoop(null); // Stop animation
+}
+
 renderer.setAnimationLoop(() => {
+  if (stackHeight > 1.5) gameOver();
+
   if (currentTetromino) {
     if (detectCollision(currentTetromino)) {
-      // Add tetromino to the placed tetrominoes list
       placedTetrominoes.push(currentTetromino);
-      stackHeight += blockSize; // Increase stack height
+      stackHeight += blockSize;
+      speed = Math.min(0.01 + stackHeight * 0.001, 0.05); // Speed scaling
 
-      // Generate a new tetromino
       currentTetromino = createTetromino();
     } else {
-      // Keep falling if no collision
       currentTetromino.position.y -= speed;
     }
   } else {
-    // Create the first tetromino
     currentTetromino = createTetromino();
   }
 
   renderer.render(scene, camera);
 });
 
-// Handle AR input sources (e.g., taps)
 const controller = renderer.xr.getController(0);
 controller.addEventListener("selectstart", onSelect);
 scene.add(controller);
 
-// Resize handling
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
