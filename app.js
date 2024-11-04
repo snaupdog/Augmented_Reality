@@ -180,7 +180,7 @@ function gameOver() {
 }
 
 renderer.setAnimationLoop(() => {
-  if (stackHeight > 1.5) gameOver();
+  if (stackHeight > 0.5) gameOver();
 
   if (currentTetromino) {
     if (detectCollision(currentTetromino)) {
