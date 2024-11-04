@@ -31,6 +31,8 @@ let stackHeight = 0;
 let speed = 0.01;
 let currentTetromino;
 const placedTetrominoes = [];
+const moveDistance = blockSize; // Distance to move left or right
+const rotationAngle = Math.PI / 2; // Angle to rotate
 
 // Tetromino shapes
 const tetrominoes = [
@@ -83,7 +85,8 @@ function createTetromino() {
     group.add(block);
   });
 
-  group.position.set(0, stackHeight + 1.5, -0.5);
+  group.position.set(0, 0.8, -0.5);
+
   scene.add(group);
   return group;
 }
@@ -152,8 +155,11 @@ function detectCollision(tetromino) {
   for (const block of blocks) {
     const worldPosition = block.getWorldPosition(new THREE.Vector3());
     const blockY = worldPosition.y;
-
-    if (blockY <= stackHeight + blockSize / 2) return true;
+    const checkGround = stackHeight + blockSize / 2;
+    if (blockY <= 0.01) {
+      console.log("hitting the ground ");
+      return true;
+    }
 
     for (const placed of placedTetrominoes) {
       const placedBlocks = placed.children;
@@ -166,6 +172,7 @@ function detectCollision(tetromino) {
           Math.abs(worldPosition.y - placedWorldPosition.y) < blockSize &&
           Math.abs(worldPosition.z - placedWorldPosition.z) < blockSize
         ) {
+          console.log("block detection");
           return true;
         }
       }
@@ -179,14 +186,53 @@ function gameOver() {
   renderer.setAnimationLoop(null); // Stop animation
 }
 
+// Handle keyboard controls for Tetromino movement
+function handleKeyDown(event) {
+  if (!currentTetromino) return; // Only respond if there's a Tetromino
+
+  switch (event.key) {
+    case "ArrowLeft":
+      currentTetromino.position.x -= moveDistance;
+      if (detectCollision(currentTetromino)) {
+        currentTetromino.position.x += moveDistance; // Revert if colliding
+      }
+      break;
+
+    case "ArrowRight":
+      currentTetromino.position.x += moveDistance;
+      if (detectCollision(currentTetromino)) {
+        currentTetromino.position.x -= moveDistance; // Revert if colliding
+      }
+      break;
+
+    case "ArrowUp":
+      currentTetromino.rotation.z += rotationAngle;
+      if (detectCollision(currentTetromino)) {
+        currentTetromino.rotation.z -= rotationAngle; // Revert if colliding
+      }
+      break;
+
+    case "ArrowDown":
+      currentTetromino.position.y -= speed * 2;
+      if (detectCollision(currentTetromino)) {
+        currentTetromino.position.y += speed * 2; // Revert if colliding
+      }
+      break;
+  }
+}
+
+// Add event listener for keyboard controls
+window.addEventListener("keydown", handleKeyDown);
+
+// Animation loop
 renderer.setAnimationLoop(() => {
-  if (stackHeight > 0.5) gameOver();
+  // if (stackHeight > 0.5) gameOver();
 
   if (currentTetromino) {
     if (detectCollision(currentTetromino)) {
       placedTetrominoes.push(currentTetromino);
-      stackHeight += blockSize;
-      speed = Math.min(0.01 + stackHeight * 0.001, 0.05); // Speed scaling
+      // stackHeight += blockSize;
+      // speed = Math.min(0.01 + stackHeight * 0.001, 0.05); // Speed scaling
 
       currentTetromino = createTetromino();
     } else {
@@ -203,6 +249,7 @@ const controller = renderer.xr.getController(0);
 controller.addEventListener("selectstart", onSelect);
 scene.add(controller);
 
+// Handle window resize
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
