@@ -28,11 +28,13 @@ scene.add(ambientLight);
 
 const blockSize = 0.02; // Tetromino block size
 let stackHeight = 0;
-let speed = 0.01;
+let speed = 0.002;
 let currentTetromino;
 const placedTetrominoes = [];
 const moveDistance = blockSize; // Distance to move left or right
 const rotationAngle = Math.PI / 2; // Angle to rotate
+
+const gridBlocks = 10; // Number of blocks in one row/column (adjust as needed)
 
 // Tetromino shapes
 const tetrominoes = [
@@ -92,7 +94,6 @@ function createTetromino() {
 }
 
 function createGridHelpers() {
-  const gridBlocks = 10; // Number of blocks in one row/column (adjust as needed)
   const gridSize = gridBlocks * blockSize; //
 
   const horizontalGrid = new THREE.GridHelper(
@@ -138,15 +139,15 @@ function onSelect() {
   if (currentTetromino) {
     currentTetromino.rotation.z += Math.PI / 2;
 
-    currentTetromino.children.forEach((block) => {
-      block.material.color.setHex(0xff0000); // Change to red briefly
-    });
-
-    setTimeout(() => {
-      currentTetromino.children.forEach((block) => {
-        block.material.color.set(Math.random() * 0xffffff); // Reset color
-      });
-    }, 200); // Reset after 200ms
+    // currentTetromino.children.forEach((block) => {
+    //   block.material.color.setHex(0xff0000); // Change to red briefly
+    // });
+    //
+    // setTimeout(() => {
+    //   currentTetromino.children.forEach((block) => {
+    //     block.material.color.set(Math.random() * 0xffffff); // Reset color
+    //   });
+    // }, 200); // Reset after 200ms
   }
 }
 
@@ -154,10 +155,23 @@ function detectCollision(tetromino) {
   const blocks = tetromino.children;
   for (const block of blocks) {
     const worldPosition = block.getWorldPosition(new THREE.Vector3());
-    const blockY = worldPosition.y;
-    const checkGround = stackHeight + blockSize / 2;
-    if (blockY <= 0.01) {
+
+    // Check against ground and grid boundaries
+    if (worldPosition.y <= 0.01) {
       console.log("hitting the ground ");
+
+      console.log(
+        `World Positions X : ${worldPosition.x} World Positions Y : ${worldPosition.y}`,
+      );
+      return true;
+    }
+
+    // console.log(Math.abs(worldPosition.x));
+
+    // console.log(Math.abs(worldPosition.y));
+
+    if (worldPosition.x < -0.15 || worldPosition.x >= 0.15) {
+      console.log("hitting the grid boundary ");
       return true;
     }
 
@@ -173,6 +187,9 @@ function detectCollision(tetromino) {
           Math.abs(worldPosition.z - placedWorldPosition.z) < blockSize
         ) {
           console.log("block detection");
+          console.log(
+            `World Positions X : ${worldPosition.x} World Positions Y : ${worldPosition.y}`,
+          );
           return true;
         }
       }
@@ -255,3 +272,54 @@ window.addEventListener("resize", () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+let startX, startY, endX, endY;
+
+function onTouchStart(event) {
+  const touch = event.touches[0];
+  startX = touch.clientX;
+  startY = touch.clientY;
+}
+
+function onTouchEnd(event) {
+  const touch = event.changedTouches[0];
+  endX = touch.clientX;
+  endY = touch.clientY;
+
+  handleSwipe();
+}
+
+function handleSwipe() {
+  const diffX = endX - startX;
+  const diffY = endY - startY;
+
+  if (Math.abs(diffX) > Math.abs(diffY)) {
+    if (diffX > 0) {
+      currentTetromino.position.x += moveDistance;
+      if (detectCollision(currentTetromino)) {
+        currentTetromino.position.x -= moveDistance; // Revert if colliding
+      }
+      // Perform action for swipe right
+    } else {
+      currentTetromino.position.x -= moveDistance;
+      if (detectCollision(currentTetromino)) {
+        currentTetromino.position.x += moveDistance; // Revert if colliding
+      }
+
+      console.log("Swiped left");
+      // Perform action for swipe left
+    }
+  } else {
+    if (diffY > 0) {
+      console.log("Swiped Down");
+      // Perform action for swipe down
+    } else {
+      console.log("Swiped Up");
+      // Perform action for swipe up
+    }
+  }
+}
+
+// Add event listeners for touch events
+document.addEventListener("touchstart", onTouchStart, false);
+document.addEventListener("touchend", onTouchEnd, false);
