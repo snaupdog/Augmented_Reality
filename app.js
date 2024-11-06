@@ -44,6 +44,7 @@ const tetrominoes = [
     [-1, 0],
     [0, 1],
   ], // T-shape
+
   [
     [0, 0],
     [1, 0],
@@ -87,7 +88,7 @@ function createTetromino() {
     group.add(block);
   });
 
-  group.position.set(0, 0.8, -0.5);
+  group.position.set(0, 0.5, -0.5);
   scene.add(group);
   return group;
 }
@@ -125,9 +126,11 @@ function onSelect() {
 
 function detectCollision(tetromino) {
   const blocks = tetromino.children;
+
   for (const block of blocks) {
     const worldPosition = block.getWorldPosition(new THREE.Vector3());
 
+    // Check if block is out of bounds (left, right, bottom)
     if (
       worldPosition.y <= 0.01 ||
       worldPosition.x < -0.15 ||
@@ -136,56 +139,30 @@ function detectCollision(tetromino) {
       return true;
     }
 
+    // Check for collision with placed blocks
     for (const placed of placedTetrominoes) {
       const placedBlocks = placed.children;
+
       for (const placedBlock of placedBlocks) {
         const placedWorldPosition = placedBlock.getWorldPosition(
           new THREE.Vector3(),
         );
-        if (
-          Math.abs(worldPosition.x - placedWorldPosition.x) < blockSize &&
-          Math.abs(worldPosition.y - placedWorldPosition.y) < blockSize &&
-          Math.abs(worldPosition.z - placedWorldPosition.z) < blockSize
-        ) {
+
+        const xCollision =
+          Math.abs(worldPosition.x - placedWorldPosition.x) < blockSize * 0.9;
+        const yCollision =
+          Math.abs(worldPosition.y - placedWorldPosition.y) < blockSize * 0.9;
+        const zCollision =
+          Math.abs(worldPosition.z - placedWorldPosition.z) < blockSize * 0.9;
+
+        // Ensure collision is detected if the blocks are close enough
+        if (xCollision && yCollision && zCollision) {
           return true;
         }
       }
     }
   }
   return false;
-}
-
-function checkAndClearLines() {
-  rowsCleared.clear();
-
-  for (let y = -0.15; y <= 0.15; y += blockSize) {
-    let blocksInRow = placedTetrominoes.flatMap((tetromino) =>
-      tetromino.children.filter(
-        (block) => Math.abs(block.position.y - y) < 0.001,
-      ),
-    );
-
-    if (blocksInRow.length >= gridBlocks) {
-      rowsCleared.add(y);
-      blocksInRow.forEach((block) => {
-        scene.remove(block);
-      });
-    }
-  }
-
-  if (rowsCleared.size > 0) {
-    shiftRowsDown();
-  }
-}
-
-function shiftRowsDown() {
-  placedTetrominoes.forEach((tetromino) => {
-    tetromino.children.forEach((block) => {
-      if ([...rowsCleared].some((clearedY) => block.position.y > clearedY)) {
-        block.position.y -= blockSize;
-      }
-    });
-  });
 }
 
 function gameOver() {
@@ -197,26 +174,26 @@ function handleKeyDown(event) {
   if (!currentTetromino) return;
 
   switch (event.key) {
-    case "ArrowLeft":
+    case "h":
       currentTetromino.position.x -= moveDistance;
       if (detectCollision(currentTetromino)) {
         currentTetromino.position.x += moveDistance;
       }
       break;
-    case "ArrowRight":
+    case "l":
       currentTetromino.position.x += moveDistance;
       if (detectCollision(currentTetromino)) {
         currentTetromino.position.x -= moveDistance;
       }
       break;
-    case "ArrowUp":
+    case "k":
       currentTetromino.rotation.z += rotationAngle;
       if (detectCollision(currentTetromino)) {
         currentTetromino.rotation.z -= rotationAngle;
       }
       break;
-    case "ArrowDown":
-      currentTetromino.position.y -= speed * 2;
+    case "j":
+      currentTetromino.position.y -= speed * 6;
       if (detectCollision(currentTetromino)) {
         currentTetromino.position.y += speed * 2;
       }
@@ -230,7 +207,6 @@ renderer.setAnimationLoop(() => {
   if (currentTetromino) {
     if (detectCollision(currentTetromino)) {
       placedTetrominoes.push(currentTetromino);
-      checkAndClearLines();
       currentTetromino = createTetromino();
     } else {
       currentTetromino.position.y -= speed;
