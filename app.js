@@ -27,14 +27,19 @@ const ambientLight = new THREE.AmbientLight(0x404040);
 scene.add(ambientLight);
 
 const blockSize = 0.02; // Tetromino block size
-let stackHeight = 0;
+const gridBlocks = 10; // Number of blocks in one row/column
+
+const leftwall = -0.15;
+const rightwall = 0.15;
+const floor = 0.01;
+
 let speed = 0.002;
 let currentTetromino;
 const placedTetrominoes = [];
 const moveDistance = blockSize;
+
 const rotationAngle = Math.PI / 2;
-const gridBlocks = 10; // Number of blocks in one row/column
-const rowsCleared = new Set(); // Track cleared rows
+let gameOverFlag = false;
 
 // Tetromino shapes
 const tetrominoes = [
@@ -63,6 +68,12 @@ const tetrominoes = [
     [-1, 1],
     [1, 0],
   ], // J-shape
+  [
+    [0, 0],
+    [1, 0],
+    [-1, 0],
+    [-2, 0],
+  ], // Line shape
 ];
 
 function createBlock(material) {
@@ -88,7 +99,7 @@ function createTetromino() {
     group.add(block);
   });
 
-  group.position.set(0, 0.5, -0.5);
+  group.position.set(0, 0.3, -0.5);
   scene.add(group);
   return group;
 }
@@ -128,13 +139,14 @@ function detectCollision(tetromino) {
   const blocks = tetromino.children;
 
   for (const block of blocks) {
+    // new block
     const worldPosition = block.getWorldPosition(new THREE.Vector3());
 
     // Check if block is out of bounds (left, right, bottom)
     if (
-      worldPosition.y <= 0.01 ||
-      worldPosition.x < -0.15 ||
-      worldPosition.x >= 0.15
+      worldPosition.y <= floor ||
+      worldPosition.x < leftwall ||
+      worldPosition.x >= rightwall
     ) {
       return true;
     }
@@ -157,6 +169,10 @@ function detectCollision(tetromino) {
 
         // Ensure collision is detected if the blocks are close enough
         if (xCollision && yCollision && zCollision) {
+          // console.log(
+          //   `${worldPosition.x - placedWorldPosition.x} noway ${worldPosition.y - placedWorldPosition.y} noway ${worldPosition.z - placedWorldPosition.z}}`,
+          // );
+          removeBlocksAtY(tetromino, 0.17);
           return true;
         }
       }
@@ -165,6 +181,23 @@ function detectCollision(tetromino) {
   return false;
 }
 
+function removeBlocksAtY(group, targetY) {
+  const blocksToRemove = [];
+
+  group.children.forEach((block) => {
+    const worldPosition = block.getWorldPosition(new THREE.Vector3());
+    if (worldPosition.y > targetY) {
+      console.log("removing block");
+      blocksToRemove.push(block);
+    }
+  });
+
+  blocksToRemove.forEach((block) => {
+    group.remove(block); // Remove block from the group
+    block.geometry.dispose(); // Clean up geometry memory
+    block.material.dispose(); // Clean up material memory
+  });
+}
 function gameOver() {
   alert("Game Over! Refresh to restart.");
   renderer.setAnimationLoop(null);
@@ -203,27 +236,19 @@ function handleKeyDown(event) {
 
 window.addEventListener("keydown", handleKeyDown);
 
+currentTetromino = createTetromino();
+
 renderer.setAnimationLoop(() => {
   if (currentTetromino) {
     if (detectCollision(currentTetromino)) {
       placedTetrominoes.push(currentTetromino);
       currentTetromino = createTetromino();
+      // increase speed as collisions occurs
+      // speed = Math.min(speed * 1.05, 0.1);
+      if (gameOverFlag) gameOver();
     } else {
       currentTetromino.position.y -= speed;
     }
-  } else {
-    currentTetromino = createTetromino();
   }
-
   renderer.render(scene, camera);
-});
-
-const controller = renderer.xr.getController(0);
-controller.addEventListener("selectstart", onSelect);
-scene.add(controller);
-
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
 });
