@@ -9,7 +9,6 @@ const camera = new THREE.PerspectiveCamera(
   0.01,
   20,
 );
-
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
@@ -33,7 +32,7 @@ const leftwall = -0.15;
 const rightwall = 0.15;
 const floor = 0.01;
 
-let speed = 0.002;
+let speed = 0.001;
 let currentTetromino;
 const placedTetrominoes = [];
 const moveDistance = blockSize;
@@ -56,24 +55,29 @@ const tetrominoes = [
     [0, 1],
     [1, 1],
   ], // Square
+
   [
     [0, 0],
     [1, 0],
     [-1, 0],
     [-1, 1],
   ], // L-shape
+
   [
     [0, 0],
     [-1, 0],
     [-1, 1],
     [1, 0],
   ], // J-shape
+
   [
     [0, 0],
     [1, 0],
     [-1, 0],
     [-2, 0],
   ], // Line shape
+
+  [[0, 0]], // Line shape
 ];
 
 function createBlock(material) {
@@ -123,7 +127,7 @@ function createGridHelpers() {
     0x808080,
   );
   verticalGrid.rotation.x = Math.PI / 2;
-  verticalGrid.position.y = 0.1;
+  verticalGrid.position.y = floor;
   scene.add(verticalGrid);
 }
 
@@ -139,7 +143,6 @@ function detectCollision(tetromino) {
   const blocks = tetromino.children;
 
   for (const block of blocks) {
-    // new block
     const worldPosition = block.getWorldPosition(new THREE.Vector3());
 
     // Check if block is out of bounds (left, right, bottom)
@@ -148,6 +151,8 @@ function detectCollision(tetromino) {
       worldPosition.x < leftwall ||
       worldPosition.x >= rightwall
     ) {
+      checkAndRemoveFullRows();
+      console.log(worldPosition.y);
       return true;
     }
 
@@ -167,12 +172,10 @@ function detectCollision(tetromino) {
         const zCollision =
           Math.abs(worldPosition.z - placedWorldPosition.z) < blockSize * 0.9;
 
-        // Ensure collision is detected if the blocks are close enough
         if (xCollision && yCollision && zCollision) {
-          // console.log(
-          //   `${worldPosition.x - placedWorldPosition.x} noway ${worldPosition.y - placedWorldPosition.y} noway ${worldPosition.z - placedWorldPosition.z}}`,
-          // );
-          removeBlocksAtY(tetromino, 0.17);
+          checkAndRemoveFullRows();
+
+          console.log(worldPosition.y);
           return true;
         }
       }
@@ -181,23 +184,55 @@ function detectCollision(tetromino) {
   return false;
 }
 
-function removeBlocksAtY(group, targetY) {
-  const blocksToRemove = [];
+function checkAndRemoveFullRows() {
+  const rowBlocks = {};
+  const rowBlockscount = {};
 
-  group.children.forEach((block) => {
-    const worldPosition = block.getWorldPosition(new THREE.Vector3());
-    if (worldPosition.y > targetY) {
-      console.log("removing block");
-      blocksToRemove.push(block);
-    }
+  // Organize blocks by their y positions
+  placedTetrominoes.forEach((tetromino) => {
+    tetromino.children.forEach((block) => {
+      const blockposition = block.getWorldPosition(new THREE.Vector3());
+      // const yPos = Math.round(blockposition.y * 100) / 100;
+      const yPos = blockposition.y;
+      if (!rowBlocks[yPos]) {
+        rowBlocks[yPos] = [];
+      }
+      rowBlocks[yPos].push(block);
+
+      if (!rowBlockscount[yPos]) {
+        rowBlockscount[yPos] = 0;
+      }
+      rowBlockscount[yPos]++;
+    });
   });
+  console.log(rowBlockscount);
 
-  blocksToRemove.forEach((block) => {
-    group.remove(block); // Remove block from the group
-    block.geometry.dispose(); // Clean up geometry memory
-    block.material.dispose(); // Clean up material memory
+  // Detect full rows
+  const rowsToClear = [];
+  for (const yPos in rowBlocks) {
+    if (rowBlocks[yPos].length >= gridBlocks) {
+      rowsToClear.push(yPos);
+    }
+  }
+
+  // Clear the rows and shift blocks down
+  rowsToClear.forEach((yPos) => {
+    rowBlocks[yPos].forEach((block) => {
+      block.parent.remove(block);
+      block.geometry.dispose();
+      block.material.dispose();
+    });
+
+    placedTetrominoes.forEach((tetromino) => {
+      tetromino.children.forEach((block) => {
+        if (block.position.y > yPos) {
+          block.position.y -= blockSize;
+        }
+      });
+    });
   });
 }
+
 function gameOver() {
   alert("Game Over! Refresh to restart.");
   renderer.setAnimationLoop(null);
@@ -243,8 +278,6 @@ renderer.setAnimationLoop(() => {
     if (detectCollision(currentTetromino)) {
       placedTetrominoes.push(currentTetromino);
       currentTetromino = createTetromino();
-      // increase speed as collisions occurs
-      // speed = Math.min(speed * 1.05, 0.1);
       if (gameOverFlag) gameOver();
     } else {
       currentTetromino.position.y -= speed;
