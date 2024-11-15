@@ -1,287 +1,350 @@
 import * as THREE from "./node_modules/three/build/three.module.js";
-import { ARButton } from "./node_modules/three/examples/jsm/webxr/ARButton.js";
 
-// Set up scene, camera, and renderer
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(
-  70,
-  window.innerWidth / window.innerHeight,
-  0.01,
-  20,
-);
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.xr.enabled = true;
-renderer.shadowMap.enabled = true;
-document.body.appendChild(renderer.domElement);
-document.body.appendChild(ARButton.createButton(renderer));
+// Constants for game
+const BOARD_WIDTH = 10;
+const BOARD_HEIGHT = 20;
+const BLOCK_SIZE = 1;
 
-// Lights for better visibility and shadow effects
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(5, 5, 5);
-light.castShadow = true;
-scene.add(light);
+class ARTetris {
+  constructor() {
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000,
+    );
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
 
-const ambientLight = new THREE.AmbientLight(0x404040);
-scene.add(ambientLight);
+    // Game state
+    this.board = Array(BOARD_HEIGHT)
+      .fill()
+      .map(() => Array(BOARD_WIDTH).fill(0));
+    this.currentPiece = null;
+    this.gameOver = false;
 
-const blockSize = 0.02; // Tetromino block size
-const gridBlocks = 10; // Number of blocks in one row/column
-
-const leftwall = -0.15;
-const rightwall = 0.15;
-const floor = 0.01;
-
-let speed = 0.001;
-let currentTetromino;
-const placedTetrominoes = [];
-const moveDistance = blockSize;
-
-const rotationAngle = Math.PI / 2;
-let gameOverFlag = false;
-
-// Tetromino shapes
-const tetrominoes = [
-  [
-    [0, 0],
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-  ], // T-shape
-
-  [
-    [0, 0],
-    [1, 0],
-    [0, 1],
-    [1, 1],
-  ], // Square
-
-  [
-    [0, 0],
-    [1, 0],
-    [-1, 0],
-    [-1, 1],
-  ], // L-shape
-
-  [
-    [0, 0],
-    [-1, 0],
-    [-1, 1],
-    [1, 0],
-  ], // J-shape
-
-  [
-    [0, 0],
-    [1, 0],
-    [-1, 0],
-    [-2, 0],
-  ], // Line shape
-
-  [[0, 0]], // Line shape
-];
-
-function createBlock(material) {
-  const block = new THREE.Mesh(
-    new THREE.BoxGeometry(blockSize, blockSize, blockSize),
-    material,
-  );
-  block.castShadow = true;
-  block.receiveShadow = true;
-  return block;
-}
-
-function createTetromino() {
-  const shape = tetrominoes[Math.floor(Math.random() * tetrominoes.length)];
-  const material = new THREE.MeshStandardMaterial({
-    color: Math.random() * 0xffffff,
-  });
-
-  const group = new THREE.Group();
-  shape.forEach(([x, y]) => {
-    const block = createBlock(material);
-    block.position.set(x * blockSize, y * blockSize, 0);
-    group.add(block);
-  });
-
-  group.position.set(0, 0.3, -0.5);
-  scene.add(group);
-  return group;
-}
-
-function createGridHelpers() {
-  const gridSize = gridBlocks * blockSize;
-
-  const horizontalGrid = new THREE.GridHelper(
-    gridSize,
-    gridBlocks,
-    0x00ff00,
-    0x808080,
-  );
-  horizontalGrid.position.z = -0.5;
-  scene.add(horizontalGrid);
-
-  const verticalGrid = new THREE.GridHelper(
-    gridSize,
-    gridBlocks,
-    0x00ff00,
-    0x808080,
-  );
-  verticalGrid.rotation.x = Math.PI / 2;
-  verticalGrid.position.y = floor;
-  scene.add(verticalGrid);
-}
-
-createGridHelpers();
-
-function onSelect() {
-  if (currentTetromino) {
-    currentTetromino.rotation.z += Math.PI / 2;
+    this.init();
   }
-}
 
-function detectCollision(tetromino) {
-  const blocks = tetromino.children;
+  init() {
+    // Setup renderer
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(this.renderer.domElement);
 
-  for (const block of blocks) {
-    const worldPosition = block.getWorldPosition(new THREE.Vector3());
+    // Setup camera
+    this.camera.position.z = 25;
+    this.camera.position.y = 10;
+    this.camera.lookAt(0, 0, 0);
 
-    // Check if block is out of bounds (left, right, bottom)
-    if (
-      worldPosition.y <= floor ||
-      worldPosition.x < leftwall ||
-      worldPosition.x >= rightwall
-    ) {
-      checkAndRemoveFullRows();
-      console.log(worldPosition.y);
-      return true;
+    // Add lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(10, 20, 10);
+    this.scene.add(ambientLight, directionalLight);
+
+    // Create game board frame
+    this.createBoardFrame();
+
+    // Start game loop
+    this.animate();
+
+    // Setup controls
+    this.setupControls();
+
+    // Spawn first piece
+    this.spawnNewPiece();
+  }
+
+  createBoardFrame() {
+    const geometry = new THREE.BoxGeometry(
+      BOARD_WIDTH * BLOCK_SIZE,
+      BOARD_HEIGHT * BLOCK_SIZE,
+      BLOCK_SIZE * 0.1,
+    );
+    const material = new THREE.MeshPhongMaterial({
+      color: 0x808080,
+      transparent: true,
+      opacity: 0.2,
+    });
+    const frame = new THREE.Mesh(geometry, material);
+    frame.position.set(0, 0, 0);
+    this.scene.add(frame);
+  }
+
+  // Tetromino definitions
+  getTetrominos() {
+    return {
+      I: {
+        shape: [[1, 1, 1, 1]],
+        color: 0x00ffff,
+      },
+      O: {
+        shape: [
+          [1, 1],
+          [1, 1],
+        ],
+        color: 0xffff00,
+      },
+      T: {
+        shape: [
+          [0, 1, 0],
+          [1, 1, 1],
+        ],
+        color: 0xff00ff,
+      },
+      L: {
+        shape: [
+          [1, 0],
+          [1, 0],
+          [1, 1],
+        ],
+        color: 0xff8c00,
+      },
+      J: {
+        shape: [
+          [0, 1],
+          [0, 1],
+          [1, 1],
+        ],
+        color: 0x0000ff,
+      },
+      S: {
+        shape: [
+          [0, 1, 1],
+          [1, 1, 0],
+        ],
+        color: 0x00ff00,
+      },
+      Z: {
+        shape: [
+          [1, 1, 0],
+          [0, 1, 1],
+        ],
+        color: 0xff0000,
+      },
+    };
+  }
+
+  spawnNewPiece() {
+    const pieces = this.getTetrominos();
+    const types = Object.keys(pieces);
+    const type = types[Math.floor(Math.random() * types.length)];
+
+    this.currentPiece = {
+      type: type,
+      shape: pieces[type].shape,
+      color: pieces[type].color,
+      x:
+        Math.floor(BOARD_WIDTH / 2) -
+        Math.floor(pieces[type].shape[0].length / 2),
+      y: BOARD_HEIGHT - pieces[type].shape.length,
+      mesh: null,
+    };
+
+    this.createPieceMesh();
+  }
+
+  createPieceMesh() {
+    if (this.currentPiece.mesh) {
+      this.scene.remove(this.currentPiece.mesh);
     }
 
-    // Check for collision with placed blocks
-    for (const placed of placedTetrominoes) {
-      const placedBlocks = placed.children;
+    const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+    const material = new THREE.MeshPhongMaterial({
+      color: this.currentPiece.color,
+    });
 
-      for (const placedBlock of placedBlocks) {
-        const placedWorldPosition = placedBlock.getWorldPosition(
-          new THREE.Vector3(),
-        );
+    const pieceMesh = new THREE.Group();
 
-        const xCollision =
-          Math.abs(worldPosition.x - placedWorldPosition.x) < blockSize * 0.9;
-        const yCollision =
-          Math.abs(worldPosition.y - placedWorldPosition.y) < blockSize * 0.9;
-        const zCollision =
-          Math.abs(worldPosition.z - placedWorldPosition.z) < blockSize * 0.9;
-
-        if (xCollision && yCollision && zCollision) {
-          checkAndRemoveFullRows();
-
-          console.log(worldPosition.y);
-          return true;
+    for (let y = 0; y < this.currentPiece.shape.length; y++) {
+      for (let x = 0; x < this.currentPiece.shape[y].length; x++) {
+        if (this.currentPiece.shape[y][x]) {
+          const block = new THREE.Mesh(geometry, material);
+          block.position.set(
+            (x + this.currentPiece.x - BOARD_WIDTH / 2) * BLOCK_SIZE,
+            (y + this.currentPiece.y - BOARD_HEIGHT / 2) * BLOCK_SIZE,
+            0,
+          );
+          pieceMesh.add(block);
         }
       }
     }
+
+    this.currentPiece.mesh = pieceMesh;
+    this.scene.add(pieceMesh);
   }
-  return false;
-}
 
-function checkAndRemoveFullRows() {
-  const rowBlocks = {};
-  const rowBlockscount = {};
+  rotatePiece() {
+    const rotated = [];
+    const M = this.currentPiece.shape.length;
+    const N = this.currentPiece.shape[0].length;
 
-  // Organize blocks by their y positions
-  placedTetrominoes.forEach((tetromino) => {
-    tetromino.children.forEach((block) => {
-      const blockposition = block.getWorldPosition(new THREE.Vector3());
-      // const yPos = Math.round(blockposition.y * 100) / 100;
-      const yPos = blockposition.y;
-      if (!rowBlocks[yPos]) {
-        rowBlocks[yPos] = [];
+    for (let i = 0; i < N; i++) {
+      rotated[i] = [];
+      for (let j = 0; j < M; j++) {
+        rotated[i][j] = this.currentPiece.shape[M - 1 - j][i];
       }
-      rowBlocks[yPos].push(block);
-
-      if (!rowBlockscount[yPos]) {
-        rowBlockscount[yPos] = 0;
-      }
-      rowBlockscount[yPos]++;
-    });
-  });
-  console.log(rowBlockscount);
-
-  // Detect full rows
-  const rowsToClear = [];
-  for (const yPos in rowBlocks) {
-    if (rowBlocks[yPos].length >= gridBlocks) {
-      rowsToClear.push(yPos);
     }
-  }
 
-  // Clear the rows and shift blocks down
-  rowsToClear.forEach((yPos) => {
-    rowBlocks[yPos].forEach((block) => {
-      block.parent.remove(block);
-      block.geometry.dispose();
-      block.material.dispose();
-    });
+    const oldShape = this.currentPiece.shape;
+    this.currentPiece.shape = rotated;
 
-    placedTetrominoes.forEach((tetromino) => {
-      tetromino.children.forEach((block) => {
-        if (block.position.y > yPos) {
-          block.position.y -= blockSize;
-        }
-      });
-    });
-  });
-}
-
-function gameOver() {
-  alert("Game Over! Refresh to restart.");
-  renderer.setAnimationLoop(null);
-}
-
-function handleKeyDown(event) {
-  if (!currentTetromino) return;
-
-  switch (event.key) {
-    case "h":
-      currentTetromino.position.x -= moveDistance;
-      if (detectCollision(currentTetromino)) {
-        currentTetromino.position.x += moveDistance;
-      }
-      break;
-    case "l":
-      currentTetromino.position.x += moveDistance;
-      if (detectCollision(currentTetromino)) {
-        currentTetromino.position.x -= moveDistance;
-      }
-      break;
-    case "k":
-      currentTetromino.rotation.z += rotationAngle;
-      if (detectCollision(currentTetromino)) {
-        currentTetromino.rotation.z -= rotationAngle;
-      }
-      break;
-    case "j":
-      currentTetromino.position.y -= speed * 6;
-      if (detectCollision(currentTetromino)) {
-        currentTetromino.position.y += speed * 2;
-      }
-      break;
-  }
-}
-
-window.addEventListener("keydown", handleKeyDown);
-
-currentTetromino = createTetromino();
-
-renderer.setAnimationLoop(() => {
-  if (currentTetromino) {
-    if (detectCollision(currentTetromino)) {
-      placedTetrominoes.push(currentTetromino);
-      currentTetromino = createTetromino();
-      if (gameOverFlag) gameOver();
+    if (this.checkCollision()) {
+      this.currentPiece.shape = oldShape;
     } else {
-      currentTetromino.position.y -= speed;
+      this.createPieceMesh();
     }
   }
-  renderer.render(scene, camera);
+
+  checkCollision() {
+    for (let y = 0; y < this.currentPiece.shape.length; y++) {
+      for (let x = 0; x < this.currentPiece.shape[y].length; x++) {
+        if (this.currentPiece.shape[y][x]) {
+          const boardX = this.currentPiece.x + x;
+          const boardY = this.currentPiece.y + y;
+
+          if (
+            boardX < 0 ||
+            boardX >= BOARD_WIDTH ||
+            boardY < 0 ||
+            boardY >= BOARD_HEIGHT ||
+            this.board[boardY][boardX]
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  movePiece(dx, dy) {
+    this.currentPiece.x += dx;
+    this.currentPiece.y += dy;
+
+    if (this.checkCollision()) {
+      this.currentPiece.x -= dx;
+      this.currentPiece.y -= dy;
+
+      if (dy < 0) {
+        this.lockPiece();
+        this.clearLines();
+        this.spawnNewPiece();
+
+        if (this.checkCollision()) {
+          this.gameOver = true;
+          console.log("Game Over!");
+        }
+      }
+      return false;
+    }
+
+    this.createPieceMesh();
+    return true;
+  }
+
+  lockPiece() {
+    for (let y = 0; y < this.currentPiece.shape.length; y++) {
+      for (let x = 0; x < this.currentPiece.shape[y].length; x++) {
+        if (this.currentPiece.shape[y][x]) {
+          const boardX = this.currentPiece.x + x;
+          const boardY = this.currentPiece.y + y;
+          this.board[boardY][boardX] = {
+            color: this.currentPiece.color,
+          };
+        }
+      }
+    }
+    this.updateBoardMesh();
+  }
+
+  clearLines() {
+    for (let y = 0; y < BOARD_HEIGHT; y++) {
+      if (this.board[y].every((cell) => cell !== 0)) {
+        // Remove the line
+        this.board.splice(y, 1);
+        // Add new empty line at the top
+        this.board.push(Array(BOARD_WIDTH).fill(0));
+        // Update visuals
+        this.updateBoardMesh();
+      }
+    }
+  }
+
+  updateBoardMesh() {
+    // Remove old board blocks
+    this.scene.children = this.scene.children.filter(
+      (child) => child !== this.currentPiece.mesh && !child.isStaticBlock,
+    );
+
+    // Create new blocks for locked pieces
+    const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+
+    for (let y = 0; y < BOARD_HEIGHT; y++) {
+      for (let x = 0; x < BOARD_WIDTH; x++) {
+        if (this.board[y][x]) {
+          const material = new THREE.MeshPhongMaterial({
+            color: this.board[y][x].color,
+          });
+          const block = new THREE.Mesh(geometry, material);
+          block.isStaticBlock = true;
+          block.position.set(
+            (x - BOARD_WIDTH / 2) * BLOCK_SIZE,
+            (y - BOARD_HEIGHT / 2) * BLOCK_SIZE,
+            0,
+          );
+          this.scene.add(block);
+        }
+      }
+    }
+  }
+
+  setupControls() {
+    document.addEventListener("keydown", (event) => {
+      if (this.gameOver) return;
+
+      switch (event.key) {
+        case "ArrowLeft":
+          this.movePiece(-1, 0);
+          break;
+        case "ArrowRight":
+          this.movePiece(1, 0);
+          break;
+        case "ArrowDown":
+          this.movePiece(0, -1);
+          break;
+        case "ArrowUp":
+        case "Space":
+          this.rotatePiece();
+          break;
+      }
+    });
+  }
+
+  animate() {
+    requestAnimationFrame(() => this.animate());
+
+    if (!this.gameOver) {
+      // Auto-drop piece every second
+      const currentTime = Date.now();
+      if (!this.lastDropTime) this.lastDropTime = currentTime;
+
+      if (currentTime - this.lastDropTime > 1000) {
+        this.movePiece(0, -1);
+        this.lastDropTime = currentTime;
+      }
+    }
+
+    this.renderer.render(this.scene, this.camera);
+  }
+}
+
+// Initialize game
+const game = new ARTetris();
+
+// Handle window resize
+window.addEventListener("resize", () => {
+  game.camera.aspect = window.innerWidth / window.innerHeight;
+  game.camera.updateProjectionMatrix();
+  game.renderer.setSize(window.innerWidth, window.innerHeight);
 });
